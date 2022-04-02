@@ -3278,17 +3278,13 @@ var Body = __webpack_require__(5);
      * @param {body} body
      * @return
      */
-    Composite.registerEvent = function(body) {
-        var events = body.events;
-        if (events && typeof events !== 'undefined') {
-            if (events.length) {
-                for (var i = 0; i < events.length; i++) {
-                    if (events[i].name && typeof events[i].callback === 'function' && events[i].callback) {
-                        Events.on(body, events[i].name, events[i].callback);
-                    }
+    Composite.registerEvent = function(body, events) {
+        events = [].concat(events || [], body.events || []);
+        if (events && typeof events !== 'undefined' && events.length > 0) {
+            for (var i = 0; i < events.length; i++) {
+                if (events[i].name && typeof events[i].callback === 'function' && events[i].callback) {
+                    Events.on(body, events[i].name, events[i].callback);
                 }
-            } else if (events.name && typeof events.callback === 'function' && events.callback) {
-                Events.on(body, events.name, events.callback);
             }
         }
     };
@@ -3531,6 +3527,55 @@ var Body = __webpack_require__(5);
     };
 
     /**
+     * Searches the composite recursively for an object matching the type and filter supplied, null if not found.
+     * @method getByFilter
+     * @param {composite} composite
+     * @param {string} type
+     * @return {object} The requested object, if found
+     */
+    Composite.getByFilter = function(composite, type, filter) {
+        if (!filter || typeof filter !== 'function')
+            filter = () => {
+                return true;
+            };
+
+        var objects;
+
+        switch (type) {
+        case 'body':
+            objects = Composite.allBodies(composite);
+            break;
+        case 'constraint':
+            objects = Composite.allConstraints(composite);
+            break;
+        case 'composite':
+            objects = Composite.allComposites(composite).concat(composite);
+            break;
+        }
+
+        if (!objects)
+            return null;
+
+        var objs = objects.filter((object) => {
+            return filter(object);
+        });
+        return objs.length <= 1 ? [objs] : objs;
+    };
+
+    /**
+     * Searches the composite recursively for an object matching the type and label supplied, null if not found.
+     * @method getByLabel
+     * @param {composite} composite
+     * @param {string} type
+     * @return {object} The requested object, if found
+     */
+    Composite.getByLabel = function(composite, type, label, get = true) {
+        return Composite.getByFilter(composite, type, (object) => {
+            return  get ? object.label === label : object.label !== label;
+        });
+    };
+
+    /**
      * Moves the given object(s) from compositeA to compositeB (equal to a remove followed by an add).
      * @method move
      * @param {compositeA} compositeA
@@ -3662,19 +3707,17 @@ var Body = __webpack_require__(5);
      * @param {bool} [recursive=true]
      * @param {function} [callback]
      */
-    Composite.each = function(composite, callback, id, recursive = true) {
+    Composite.each = function(composite, callback, id) {
         if (!callback || typeof callback !== 'function')
             return;
 
-        var bodies = recursive ? Composite.allBodies(composite) : composite.bodies;
-
+        var bodies = Composite.getByFilter(composite, 'body', (object) => {
+            if (id && typeof callback === 'number')
+                return object.id === id;
+            return true;
+        });
         for (var i = 0; i < bodies.length; i++) {
-            var body = bodies[i];
-            if (typeof id !== "number" && body.id == id) {
-                callback(i, body);
-                return;
-            }
-            callback(i, body);
+            callback(i, bodies[i]);
         }
     };
 
@@ -4048,6 +4091,13 @@ var Vector = __webpack_require__(2);
         return Body.create(Common.extend({}, line, options));
     };
 
+    Bodies.updateLineLength = function(line, delta) {
+        var deltaX = delta * Math.cos(line.angle);
+        var deltaY = delta * Math.sin(line.angle);
+        line.property['pointB'].x += deltaX;
+        line.property['pointB'].y += deltaY;
+    };
+
     /**
      * Creates a new rigid body model with a rectangle hull. 
      * The options parameter is an object that specifies any properties you wish to override the defaults.
@@ -4107,6 +4157,10 @@ var Vector = __webpack_require__(2);
             }
         };
         return Body.create(Common.extend({}, text, options));
+    };
+
+    Bodies.updateTextContent = function(text, content) {
+        text.render.text['content'] = content;
     };
 
     /**
@@ -7102,21 +7156,19 @@ var Body = __webpack_require__(5);
                 var element = elements[i];
                 if (element.events && typeof element.events !== 'undefined' &&
                     Bounds.contains(element.bounds, mouse.position)) {
-                    Events.trigger(element, 'mouseup', { mouse: mouse, render: render, element: element });
+                    Events.trigger(element, 'mouseup', { mouse: mouse, render: render });
                     if (mouse.endTime - mouse.startTime >= 400) {
                         var delta = Vector.sub(mouse.mousedownPosition, mouse.mouseupPosition);
                         // delta x y default 5, debounce
                         var debounceDelta = 5;
                         if (Math.abs(delta.x) < debounceDelta && Math.abs(delta.y) < debounceDelta) {
-                            Events.trigger(element, 'longpress', { mouse: mouse, render: render, element: element });
+                            Events.trigger(element, 'longpress', { mouse: mouse, render: render });
                         }
                     } else {
-                        Events.trigger(element, 'click', { mouse: mouse, render: render, element: element });
+                        Events.trigger(element, 'click', { mouse: mouse, render: render });
                     }
                 }
             }
-            mouse.endTime = 0;
-            mouse.startTime = 0;
         });
 
         // Events.on(canvas, 'mousemove', (mouse) => {
@@ -7124,10 +7176,14 @@ var Body = __webpack_require__(5);
         //         var element = elements[i];
         //         if (element.events && typeof element.events !== 'undefined' &&
         //             Bounds.contains(element.bounds, mouse.position)) {
-        //             Events.trigger(element, 'mousemove', { mouse: mouse, render: render, element: element });
+        //             Events.trigger(element, 'mousemove', { mouse: mouse, render: render });
         //         }
         //     }
         // });
+    };
+
+    Render.reloadElementEventHandler = function (render) {
+        render.traceBodyMouse = false;
     };
 
     /**
@@ -7342,6 +7398,10 @@ var Body = __webpack_require__(5);
                 restore(c, saveContext);
                 c.globalAlpha = 1;
             }
+
+            if (body.wireframes) {
+                Render.oneBodyWireframes(render, body, context);
+            }
         }
 
     };
@@ -7394,6 +7454,41 @@ var Body = __webpack_require__(5);
             }
         }
 
+        c.lineWidth = 1;
+        c.strokeStyle = '#bbb';
+        c.stroke();
+    };
+
+    Render.oneBodyWireframes = function(render, body, context) {
+        if (!body.render.visible)
+            return;
+        var c = context,
+            showInternalEdges = render.options.showInternalEdges,
+            part,
+            j,
+            k;
+
+        c.beginPath();
+        // handle compound parts
+        for (k = body.parts.length > 1 ? 1 : 0; k < body.parts.length; k++) {
+            part = body.parts[k];
+
+            c.moveTo(part.vertices[0].x, part.vertices[0].y);
+
+            for (j = 1; j < part.vertices.length; j++) {
+                if (!part.vertices[j - 1].isInternal || showInternalEdges) {
+                    c.lineTo(part.vertices[j].x, part.vertices[j].y);
+                } else {
+                    c.moveTo(part.vertices[j].x, part.vertices[j].y);
+                }
+
+                if (part.vertices[j].isInternal && !showInternalEdges) {
+                    c.moveTo(part.vertices[(j + 1) % part.vertices.length].x, part.vertices[(j + 1) % part.vertices.length].y);
+                }
+            }
+
+            c.lineTo(part.vertices[0].x, part.vertices[0].y);
+        }
         c.lineWidth = 1;
         c.strokeStyle = '#bbb';
         c.stroke();
@@ -9732,7 +9827,9 @@ var Bodies = __webpack_require__(8);
      * @return {body} A new button
      */
     Components.button = function(x, y, width, height, content, options) {
-        var button = Composite.create({ btype: 'Button', label: 'Button' });
+        var button = Composite.create({
+            btype: 'Button', label: 'Button', part: {},
+        });
         var defaults = {
             isStatic: true,
             isSensor: true,
@@ -9774,10 +9871,12 @@ var Bodies = __webpack_require__(8);
         }
         var edge = Bodies.rectangle(x, y, width, height, options);
         edge.belong = button;
+        button.part['edge'] = edge;
         Composite.addBody(button, edge);
         options.events = events;
         var text = Bodies.text(x, y, content, options);
         text.belong = button;
+        button.part['text'] = text;
         Composite.addBody(button, text);
         return button;
     };
@@ -9787,7 +9886,7 @@ var Bodies = __webpack_require__(8);
             {
                 name: 'mousedown',
                 callback: (object) => {
-                    var body = object.element;
+                    var body = object.source;
                     var belong = body.belong;
                     if (body.translateFactor && typeof body.translateFactor == "number" && body.translateFactor != 0)
                         Composite.translate(belong, { x: body.translateFactor, y: body.translateFactor });
@@ -9797,7 +9896,7 @@ var Bodies = __webpack_require__(8);
             {
                 name: 'mouseup',
                 callback: (object) => {
-                    var body = object.element;
+                    var body = object.source;
                     var belong = body.belong;
                     if (body.translateFactor && typeof body.translateFactor == "number" && body.translateFactor != 0)
                         Composite.translate(belong, { x: -body.translateFactor, y: -body.translateFactor });
@@ -9806,6 +9905,71 @@ var Bodies = __webpack_require__(8);
             },
         ];
     }
+
+    Components.progress = function(percent, x, y, width, options) {
+        options = options || {};
+        percent = (percent || 0) > 100 ? 100 : percent;
+        var height = options.height || 16, size = height * 1.2,
+            lineStart = x + Math.ceil(height / 2),
+            lineWidth = width - height,
+            textPoint = x + width + size * 2,
+            start = x + width/2;
+
+        var progress = Composite.create({
+            btype: 'Progress',
+            label: 'Progress',
+            percent: percent,
+            lineWidth: lineWidth,
+            lineStart: lineStart,
+            part: {}
+        });
+        var defaults = {
+            isStatic: true,
+            isSensor: true,
+            text: "",
+            chamfer: {
+                radius: height / 2
+            },
+            wireframes: false,
+            events: [],
+            render : {
+                strokeStyle: "#4caf50",
+                shadowBlur: height,
+                shadowColor: "#4a4a4a",
+                lineWidth: height,
+                lineCap: "round",
+                text: {
+                    size: size,
+                    color: '#000000',
+                    textAlign: 'center',
+                }
+            },
+        };
+        var lineEnd = lineStart + (lineWidth * progress.percent / 100);
+        options = Common.extend(defaults, options);
+        var progressbody = Bodies.rectangle(start, y, width, height, options);
+        progressbody.belong = progress;
+        progress.part['progressbody'] = progressbody;
+        Composite.addBody(progress, progressbody);
+        var progressline = Bodies.line(lineStart, y, lineEnd, y, options);
+        progressline.belong = progress;
+        progress.part['progressline'] = progressline;
+        Composite.addBody(progress, progressline);
+        var text = Bodies.text(textPoint, y, progress.percent + "%", options);
+        text.belong = progress;
+        progress.part['progresstext'] = text;
+        Composite.addBody(progress, text);
+        return progress;
+    };
+
+    Components.updateProgress = function(progress, percent) {
+        var lineEndOld = progress.progressLength || 0;
+        progress.percent = (percent || 0) > 100 ? 100 : percent;
+        progress.progressLength = progress.lineWidth * progress.percent / 100;
+        var delta = (progress.progressLength - lineEndOld) >= 0 ? (progress.progressLength - lineEndOld) : 0;
+        Bodies.updateLineLength(progress.part['progressline'], delta);
+        Bodies.updateTextContent(progress.part['progresstext'], progress.percent + '%');
+    };
 
 })();
 
@@ -11541,6 +11705,8 @@ var Common = __webpack_require__(0);
     World.add = Composite.add;
     World.remove = Composite.remove;
     World.clear = Composite.clear;
+    World.getByLabel = Composite.getByLabel;
+    World.getByFilter = Composite.getByFilter;
     World.addComposite = Composite.addComposite;
     World.addBody = Composite.addBody;
     World.addConstraint = Composite.addConstraint;
