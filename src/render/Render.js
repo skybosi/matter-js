@@ -795,21 +795,19 @@ var Body = require('../body/Body');
                 var element = elements[i];
                 if (element.events && typeof element.events !== 'undefined' &&
                     Bounds.contains(element.bounds, mouse.position)) {
-                    Events.trigger(element, 'mouseup', { mouse: mouse, render: render, element: element });
+                    Events.trigger(element, 'mouseup', { mouse: mouse, render: render });
                     if (mouse.endTime - mouse.startTime >= 400) {
                         var delta = Vector.sub(mouse.mousedownPosition, mouse.mouseupPosition);
                         // delta x y default 5, debounce
                         var debounceDelta = 5;
                         if (Math.abs(delta.x) < debounceDelta && Math.abs(delta.y) < debounceDelta) {
-                            Events.trigger(element, 'longpress', { mouse: mouse, render: render, element: element });
+                            Events.trigger(element, 'longpress', { mouse: mouse, render: render });
                         }
                     } else {
-                        Events.trigger(element, 'click', { mouse: mouse, render: render, element: element });
+                        Events.trigger(element, 'click', { mouse: mouse, render: render });
                     }
                 }
             }
-            mouse.endTime = 0;
-            mouse.startTime = 0;
         });
 
         // Events.on(canvas, 'mousemove', (mouse) => {
@@ -817,10 +815,14 @@ var Body = require('../body/Body');
         //         var element = elements[i];
         //         if (element.events && typeof element.events !== 'undefined' &&
         //             Bounds.contains(element.bounds, mouse.position)) {
-        //             Events.trigger(element, 'mousemove', { mouse: mouse, render: render, element: element });
+        //             Events.trigger(element, 'mousemove', { mouse: mouse, render: render });
         //         }
         //     }
         // });
+    };
+
+    Render.reloadElementEventHandler = function (render) {
+        render.traceBodyMouse = false;
     };
 
     /**
@@ -1035,6 +1037,10 @@ var Body = require('../body/Body');
                 restore(c, saveContext);
                 c.globalAlpha = 1;
             }
+
+            if (body.wireframes) {
+                Render.oneBodyWireframes(render, body, context);
+            }
         }
 
     };
@@ -1087,6 +1093,41 @@ var Body = require('../body/Body');
             }
         }
 
+        c.lineWidth = 1;
+        c.strokeStyle = '#bbb';
+        c.stroke();
+    };
+
+    Render.oneBodyWireframes = function(render, body, context) {
+        if (!body.render.visible)
+            return;
+        var c = context,
+            showInternalEdges = render.options.showInternalEdges,
+            part,
+            j,
+            k;
+
+        c.beginPath();
+        // handle compound parts
+        for (k = body.parts.length > 1 ? 1 : 0; k < body.parts.length; k++) {
+            part = body.parts[k];
+
+            c.moveTo(part.vertices[0].x, part.vertices[0].y);
+
+            for (j = 1; j < part.vertices.length; j++) {
+                if (!part.vertices[j - 1].isInternal || showInternalEdges) {
+                    c.lineTo(part.vertices[j].x, part.vertices[j].y);
+                } else {
+                    c.moveTo(part.vertices[j].x, part.vertices[j].y);
+                }
+
+                if (part.vertices[j].isInternal && !showInternalEdges) {
+                    c.moveTo(part.vertices[(j + 1) % part.vertices.length].x, part.vertices[(j + 1) % part.vertices.length].y);
+                }
+            }
+
+            c.lineTo(part.vertices[0].x, part.vertices[0].y);
+        }
         c.lineWidth = 1;
         c.strokeStyle = '#bbb';
         c.stroke();

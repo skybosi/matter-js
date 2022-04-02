@@ -226,17 +226,13 @@ var Body = require('./Body');
      * @param {body} body
      * @return
      */
-    Composite.registerEvent = function(body) {
-        var events = body.events;
-        if (events && typeof events !== 'undefined') {
-            if (events.length) {
-                for (var i = 0; i < events.length; i++) {
-                    if (events[i].name && typeof events[i].callback === 'function' && events[i].callback) {
-                        Events.on(body, events[i].name, events[i].callback);
-                    }
+    Composite.registerEvent = function(body, events) {
+        events = [].concat(events || [], body.events || []);
+        if (events && typeof events !== 'undefined' && events.length > 0) {
+            for (var i = 0; i < events.length; i++) {
+                if (events[i].name && typeof events[i].callback === 'function' && events[i].callback) {
+                    Events.on(body, events[i].name, events[i].callback);
                 }
-            } else if (events.name && typeof events.callback === 'function' && events.callback) {
-                Events.on(body, events.name, events.callback);
             }
         }
     };
@@ -479,6 +475,55 @@ var Body = require('./Body');
     };
 
     /**
+     * Searches the composite recursively for an object matching the type and filter supplied, null if not found.
+     * @method getByFilter
+     * @param {composite} composite
+     * @param {string} type
+     * @return {object} The requested object, if found
+     */
+    Composite.getByFilter = function(composite, type, filter) {
+        if (!filter || typeof filter !== 'function')
+            filter = () => {
+                return true;
+            };
+
+        var objects;
+
+        switch (type) {
+        case 'body':
+            objects = Composite.allBodies(composite);
+            break;
+        case 'constraint':
+            objects = Composite.allConstraints(composite);
+            break;
+        case 'composite':
+            objects = Composite.allComposites(composite).concat(composite);
+            break;
+        }
+
+        if (!objects)
+            return null;
+
+        var objs = objects.filter((object) => {
+            return filter(object);
+        });
+        return objs.length <= 1 ? [objs] : objs;
+    };
+
+    /**
+     * Searches the composite recursively for an object matching the type and label supplied, null if not found.
+     * @method getByLabel
+     * @param {composite} composite
+     * @param {string} type
+     * @return {object} The requested object, if found
+     */
+    Composite.getByLabel = function(composite, type, label, get = true) {
+        return Composite.getByFilter(composite, type, (object) => {
+            return  get ? object.label === label : object.label !== label;
+        });
+    };
+
+    /**
      * Moves the given object(s) from compositeA to compositeB (equal to a remove followed by an add).
      * @method move
      * @param {compositeA} compositeA
@@ -610,19 +655,17 @@ var Body = require('./Body');
      * @param {bool} [recursive=true]
      * @param {function} [callback]
      */
-    Composite.each = function(composite, callback, id, recursive = true) {
+    Composite.each = function(composite, callback, id) {
         if (!callback || typeof callback !== 'function')
             return;
 
-        var bodies = recursive ? Composite.allBodies(composite) : composite.bodies;
-
+        var bodies = Composite.getByFilter(composite, 'body', (object) => {
+            if (id && typeof callback === 'number')
+                return object.id === id;
+            return true;
+        });
         for (var i = 0; i < bodies.length; i++) {
-            var body = bodies[i];
-            if (typeof id !== "number" && body.id == id) {
-                callback(i, body);
-                return;
-            }
-            callback(i, body);
+            callback(i, bodies[i]);
         }
     };
 

@@ -60,6 +60,13 @@ var Vector = require('../geometry/Vector');
         return Body.create(Common.extend({}, line, options));
     };
 
+    Bodies.updateLineLength = function(line, delta) {
+        var deltaX = delta * Math.cos(line.angle);
+        var deltaY = delta * Math.sin(line.angle);
+        line.property['pointB'].x += deltaX;
+        line.property['pointB'].y += deltaY;
+    };
+
     /**
      * Creates a new rigid body model with a rectangle hull. 
      * The options parameter is an object that specifies any properties you wish to override the defaults.
@@ -119,6 +126,10 @@ var Vector = require('../geometry/Vector');
             }
         };
         return Body.create(Common.extend({}, text, options));
+    };
+
+    Bodies.updateTextContent = function(text, content) {
+        text.render.text['content'] = content;
     };
 
     /**
