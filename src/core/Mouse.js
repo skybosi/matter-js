@@ -35,7 +35,11 @@ const Events = require('./Events');
         mouse.scale = { x: 1, y: 1 };
         mouse.wheelDelta = 0;
         mouse.button = -1;
-        mouse.pixelRatio = parseInt(mouse.element.getAttribute('data-pixel-ratio'), 10) || 1;
+        mouse.pixelRatio = parseFloat(mouse.element.getAttribute('data-pixel-ratio'), 10) || 1;
+        mouse.bounds = {
+            min: {x: 0, y:0},
+            max: {x: element.width / mouse.pixelRatio, y: element.height / mouse.pixelRatio}
+        };
 
         mouse.sourceEvents = {
             mousemove: null,
@@ -45,7 +49,7 @@ const Events = require('./Events');
         };
         
         mouse.mousemove = function(event) { 
-            var position = Mouse._getRelativeMousePosition(event, mouse.element, mouse.pixelRatio),
+            var position = Mouse._getRelativeMousePosition(event, mouse.element, mouse.pixelRatio, mouse),
                 touches = event.changedTouches;
 
             if (touches) {
@@ -62,7 +66,7 @@ const Events = require('./Events');
         };
         
         mouse.mousedown = function(event) {
-            var position = Mouse._getRelativeMousePosition(event, mouse.element, mouse.pixelRatio),
+            var position = Mouse._getRelativeMousePosition(event, mouse.element, mouse.pixelRatio, mouse),
                 touches = event.changedTouches;
 
             if (touches) {
@@ -84,7 +88,7 @@ const Events = require('./Events');
         };
         
         mouse.mouseup = function(event) {
-            var position = Mouse._getRelativeMousePosition(event, mouse.element, mouse.pixelRatio),
+            var position = Mouse._getRelativeMousePosition(event, mouse.element, mouse.pixelRatio, mouse),
                 touches = event.changedTouches;
 
             if (touches) {
@@ -111,6 +115,14 @@ const Events = require('./Events');
         Mouse.setElement(mouse, mouse.element);
 
         return mouse;
+    };
+
+    Mouse.updateBounds = function(mouse, bounds) {
+        bounds = {
+            min: {x: bounds.min.x / mouse.pixelRatio, y: bounds.min.y / mouse.pixelRatio},
+            max: {x: bounds.max.x / mouse.pixelRatio, y: bounds.max.y / mouse.pixelRatio}
+        };
+        mouse.bounds = bounds;
     };
 
     /**
@@ -182,7 +194,7 @@ const Events = require('./Events');
      * @param {number} pixelRatio
      * @return {}
      */
-    Mouse._getRelativeMousePosition = function(event, element, pixelRatio) {
+    Mouse._getRelativeMousePosition = function(event, element, pixelRatio, mouse) {
         var elementBounds = element.getBoundingClientRect(),
             rootNode = (document.documentElement || document.body.parentNode || document.body),
             scrollX = (window.pageXOffset !== undefined) ? window.pageXOffset : rootNode.scrollLeft,
@@ -198,10 +210,15 @@ const Events = require('./Events');
             y = event.pageY - elementBounds.top - scrollY;
         }
 
-        return { 
+        var postion = {
             x: x / (element.clientWidth / (element.width || element.clientWidth) * pixelRatio),
             y: y / (element.clientHeight / (element.height || element.clientHeight) * pixelRatio)
         };
+        postion.x = (postion.x < mouse.bounds.min.x) ? mouse.bounds.min.x : postion.x;
+        postion.x = (postion.x > mouse.bounds.max.x) ? mouse.bounds.max.x : postion.x;
+        postion.y = (postion.y < mouse.bounds.min.y) ? mouse.bounds.min.y : postion.y;
+        postion.y = (postion.y > mouse.bounds.max.y) ? mouse.bounds.max.y : postion.y;
+        return postion;
     };
 
 })();

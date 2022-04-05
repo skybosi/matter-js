@@ -58,6 +58,10 @@ var Body = require('../body/Body');
         var engine = Common.extend(defaults, options);
 
         engine.world = options.world || Composite.create({ label: 'World' });
+        engine.world.bounds = {
+            min: { x: 0, y: 0 },
+            max: { x: options.width, y: options.height }
+        };
         engine.pairs = options.pairs || Pairs.create();
         engine.detector = options.detector || Detector.create();
 

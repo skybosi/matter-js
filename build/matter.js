@@ -3300,6 +3300,7 @@ var Body = __webpack_require__(5);
     Composite.addBody = function(composite, body) {
         Composite.registerEvent(body);
         composite.bodies.push(body);
+        body.belong = composite;
         Composite.setModified(composite, true, true, false);
         return composite;
     };
@@ -3324,7 +3325,8 @@ var Body = __webpack_require__(5);
                 Composite.removeBody(composite.composites[i], body, true);
             }
         }
-
+        // clear events
+        body.events = [];
         return composite;
     };
 
@@ -3559,7 +3561,7 @@ var Body = __webpack_require__(5);
         var objs = objects.filter((object) => {
             return filter(object);
         });
-        return objs.length <= 1 ? [objs] : objs;
+        return objs || [];
     };
 
     /**
@@ -3712,12 +3714,12 @@ var Body = __webpack_require__(5);
             return;
 
         var bodies = Composite.getByFilter(composite, 'body', (object) => {
-            if (id && typeof callback === 'number')
+            if (id && typeof id === 'number')
                 return object.id === id;
             return true;
         });
         for (var i = 0; i < bodies.length; i++) {
-            callback(i, bodies[i]);
+            callback(bodies[i]);
         }
     };
 
@@ -3730,7 +3732,7 @@ var Body = __webpack_require__(5);
     Composite.updateRender = function(composite, id, options, willRecover = true) {
         if (!composite || !options || Object.keys(options).length == 0)
             return composite;
-        Composite.each(composite, (i, body) => {
+        Composite.each(composite, (body) => {
             Body.updateRender(body, options, willRecover);
         }, id, true);
     };
@@ -3743,7 +3745,7 @@ var Body = __webpack_require__(5);
     Composite.recoverRender = function(composite, id) {
         if (!composite)
             return composite;
-        Composite.each(composite, (i, body) => {
+        Composite.each(composite, (body) => {
             Body.recoverRender(body);
         }, id, true);
     };
@@ -5630,7 +5632,11 @@ const Events = __webpack_require__(4);
         mouse.scale = { x: 1, y: 1 };
         mouse.wheelDelta = 0;
         mouse.button = -1;
-        mouse.pixelRatio = parseInt(mouse.element.getAttribute('data-pixel-ratio'), 10) || 1;
+        mouse.pixelRatio = parseFloat(mouse.element.getAttribute('data-pixel-ratio'), 10) || 1;
+        mouse.bounds = {
+            min: {x: 0, y:0},
+            max: {x: element.width / mouse.pixelRatio, y: element.height / mouse.pixelRatio}
+        };
 
         mouse.sourceEvents = {
             mousemove: null,
@@ -5640,7 +5646,7 @@ const Events = __webpack_require__(4);
         };
         
         mouse.mousemove = function(event) { 
-            var position = Mouse._getRelativeMousePosition(event, mouse.element, mouse.pixelRatio),
+            var position = Mouse._getRelativeMousePosition(event, mouse.element, mouse.pixelRatio, mouse),
                 touches = event.changedTouches;
 
             if (touches) {
@@ -5657,7 +5663,7 @@ const Events = __webpack_require__(4);
         };
         
         mouse.mousedown = function(event) {
-            var position = Mouse._getRelativeMousePosition(event, mouse.element, mouse.pixelRatio),
+            var position = Mouse._getRelativeMousePosition(event, mouse.element, mouse.pixelRatio, mouse),
                 touches = event.changedTouches;
 
             if (touches) {
@@ -5679,7 +5685,7 @@ const Events = __webpack_require__(4);
         };
         
         mouse.mouseup = function(event) {
-            var position = Mouse._getRelativeMousePosition(event, mouse.element, mouse.pixelRatio),
+            var position = Mouse._getRelativeMousePosition(event, mouse.element, mouse.pixelRatio, mouse),
                 touches = event.changedTouches;
 
             if (touches) {
@@ -5706,6 +5712,14 @@ const Events = __webpack_require__(4);
         Mouse.setElement(mouse, mouse.element);
 
         return mouse;
+    };
+
+    Mouse.updateBounds = function(mouse, bounds) {
+        bounds = {
+            min: {x: bounds.min.x / mouse.pixelRatio, y: bounds.min.y / mouse.pixelRatio},
+            max: {x: bounds.max.x / mouse.pixelRatio, y: bounds.max.y / mouse.pixelRatio}
+        };
+        mouse.bounds = bounds;
     };
 
     /**
@@ -5777,7 +5791,7 @@ const Events = __webpack_require__(4);
      * @param {number} pixelRatio
      * @return {}
      */
-    Mouse._getRelativeMousePosition = function(event, element, pixelRatio) {
+    Mouse._getRelativeMousePosition = function(event, element, pixelRatio, mouse) {
         var elementBounds = element.getBoundingClientRect(),
             rootNode = (document.documentElement || document.body.parentNode || document.body),
             scrollX = (window.pageXOffset !== undefined) ? window.pageXOffset : rootNode.scrollLeft,
@@ -5793,10 +5807,15 @@ const Events = __webpack_require__(4);
             y = event.pageY - elementBounds.top - scrollY;
         }
 
-        return { 
+        var postion = {
             x: x / (element.clientWidth / (element.width || element.clientWidth) * pixelRatio),
             y: y / (element.clientHeight / (element.height || element.clientHeight) * pixelRatio)
         };
+        postion.x = (postion.x < mouse.bounds.min.x) ? mouse.bounds.min.x : postion.x;
+        postion.x = (postion.x > mouse.bounds.max.x) ? mouse.bounds.max.x : postion.x;
+        postion.y = (postion.y < mouse.bounds.min.y) ? mouse.bounds.min.y : postion.y;
+        postion.y = (postion.y > mouse.bounds.max.y) ? mouse.bounds.max.y : postion.y;
+        return postion;
     };
 
 })();
@@ -6395,6 +6414,31 @@ var Body = __webpack_require__(5);
 
     Render._goodFps = 30;
     Render._goodDelta = 1000 / 60;
+
+    var canvasProperty = {
+        filter        : 1,
+        font          : 1,
+        family        : 1,
+        lineCap       : 1,
+        lineJoin      : 1,
+        lineWidth     : 1,
+        direction     : 1,
+        textAlign     : 1,
+        miterLimit    : 1,
+        shadowBlur    : 1,
+        shadowColor   : 1,
+        globalAlpha   : 1,
+        fillStyle     : 1,
+        strokeStyle   : 1,
+        textBaseline  : 1,
+        shadowOffsetX : 1,
+        shadowOffsetY : 1,
+        lineDash      : 1,
+        lineDashOffset: 1,
+        imageSmoothingEnabled: 1,
+        imageSmoothingQuality: 1,
+        globalCompositeOperation: 1,
+    };
 
     /**
      * Creates a new renderer. The options parameter is an object that specifies any properties you wish to override the defaults.
@@ -7140,7 +7184,7 @@ var Body = __webpack_require__(5);
      */
     Render.elementEventHandler = function (render, elements) {
         var canvas = render.canvas;
-
+        canvas.events = null;
         Events.on(canvas, 'mousedown', (mouse) => {
             for (var i = 0; i < elements.length; i++) {
                 var element = elements[i];
@@ -7218,11 +7262,14 @@ var Body = __webpack_require__(5);
                     continue;
 
                 // save
-                var saveContext = save(c);
+                c.save();
                 if (options.showSleeping && body.isSleeping) {
                     c.globalAlpha = 0.5 * part.render.opacity;
                 } else if (part.render.opacity !== 1) {
                     c.globalAlpha = part.render.opacity;
+                } else if (render.engine && render.engine.world &&
+                    typeof render.engine.world.opacity == 'number' && render.engine.world.opacity !== 1) { // for popup event
+                    c.globalAlpha = render.engine.world.opacity;
                 }
 
                 if (part.render.sprite && part.render.sprite.texture && !options.wireframes) {
@@ -7234,22 +7281,39 @@ var Body = __webpack_require__(5);
                     c.rotate(part.angle);
 
                     // sprite.width over-write xScale
-                    if (texture.screenWidth != sprite.width &&
-                        typeof sprite.width !== 'undefined' &&
+                    if (typeof sprite.width !== 'undefined' &&
                         typeof texture.width !== 'undefined' &&
                         sprite.width !== 0 &&
                         texture.width !== 0) {
                         texture.screenWidth = sprite.width;
-                        sprite.xScale = texture.screenWidth / texture.width;
+                        sprite.xScale = sprite.width / texture.width;
                     }
                     // sprite.height over-write yScale
-                    if (texture.screenHeight != sprite.height &&
-                        typeof sprite.height !== 'undefined' &&
+                    if (typeof sprite.height !== 'undefined' &&
                         typeof texture.height !== 'undefined' &&
                         sprite.height !== 0 &&
                         texture.height !== 0) {
                         texture.screenHeight = sprite.height;
                         sprite.yScale = sprite.height / texture.height;
+                    }
+
+                    // image aspect mode
+                    switch(sprite.mode) {
+                    case 'aspectFit':
+                        sprite.yScale = sprite.xScale = Math.max(sprite.yScale, sprite.xScale);
+                        break;
+                    case 'aspectFill':
+                        sprite.yScale = sprite.xScale = Math.min(sprite.yScale, sprite.xScale);
+                        break;
+                    case 'widthFix':
+                        sprite.xScale = 1;
+                        break;
+                    case 'heightFix':
+                        sprite.yScale = 1;
+                        break;
+                    case 'scaleToFill':
+                    default:
+                        break;
                     }
 
                     c.drawImage(
@@ -7270,7 +7334,6 @@ var Body = __webpack_require__(5);
                         c.arc(part.position.x, part.position.y, part.circleRadius, 0, 2 * Math.PI);
                     } else if (part.btype == 'Text') {
                         c.beginPath();
-                        c.save();
                         var text = _getText(render, part);
                         c.font         = text.height + 'px ' + text.family;
                         c.family       = text.family;
@@ -7279,7 +7342,6 @@ var Body = __webpack_require__(5);
                         c.textAlign    = text.textAlign;
                         c.textBaseline = text.textBaseline;
                         c.fillText(text.content, part.position.x, part.position.y, text.width - 2 * text.padding);
-                        c.restore();
                     } else if (part.btype == 'Line') {
                         Common.extend(c, part.render);
                         c.beginPath();
@@ -7374,7 +7436,7 @@ var Body = __webpack_require__(5);
                         c.closePath();
                     }
 
-                    if (!options.wireframes && !part.wireframes) {
+                    if (!options.wireframes) {
                         c.fillStyle = part.render.fillStyle;
 
                         if (part.render.lineWidth) {
@@ -7389,18 +7451,13 @@ var Body = __webpack_require__(5);
                         c.strokeStyle = part.render.strokeStyle || '#bbb';
                         c.stroke();
                     }
-                    // restore
-                    // c.shadowBlur = shadowBlur;
-                    // c.shadowColor = shadowColor;
-                    // c.shadowOffsetX = shadowOffsetX;
-                    // c.shadowColor = shadowOffsetY;
                 }
-                restore(c, saveContext);
+                c.restore();
                 c.globalAlpha = 1;
             }
 
             if (body.wireframes) {
-                Render.oneBodyWireframes(render, body, context);
+                Render.oneBodyWireframes(render, body, context, body.wireframes);
             }
         }
 
@@ -7459,7 +7516,7 @@ var Body = __webpack_require__(5);
         c.stroke();
     };
 
-    Render.oneBodyWireframes = function(render, body, context) {
+    Render.oneBodyWireframes = function(render, body, context, wireframes) {
         if (!body.render.visible)
             return;
         var c = context,
@@ -7489,8 +7546,8 @@ var Body = __webpack_require__(5);
 
             c.lineTo(part.vertices[0].x, part.vertices[0].y);
         }
-        c.lineWidth = 1;
-        c.strokeStyle = '#bbb';
+        c.lineWidth = wireframes.lineWidth || 1;
+        c.strokeStyle =  wireframes.strokeStyle || '#bbb';
         c.stroke();
     };
 
@@ -7672,39 +7729,13 @@ var Body = __webpack_require__(5);
         c.globalCompositeOperation = 'source-over';
     };
 
-    // save canvas context
-    function save(c) {
-        return {
-            filter        : c.filter,
-            font          : c.font,
-            family        : c.family,
-            lineCap       : c.lineCap,
-            lineJoin      : c.lineJoin,
-            lineWidth     : c.lineWidth,
-            direction     : c.direction,
-            textAlign     : c.textAlign,
-            miterLimit    : c.miterLimit,
-            shadowBlur    : c.shadowBlur,
-            shadowColor   : c.shadowColor,
-            globalAlpha   : c.globalAlpha,
-            fillStyle     : c.fillStyle,
-            strokeStyle   : c.strokeStyle,
-            textBaseline  : c.textBaseline,
-            shadowOffsetX : c.shadowOffsetX,
-            shadowOffsetY : c.shadowOffsetY,
-            lineDash      : c.lineDash,
-            lineDashOffset: c.lineDashOffset,
-            imageSmoothingEnabled: c.imageSmoothingEnabled,
-            imageSmoothingQuality: c.imageSmoothingQuality,
-            globalCompositeOperation: c.globalCompositeOperation,
-        };
-    }
-
-    // restore canvas context
-    function restore(c, store) {
-        for (const key in store) {
-            c[key] = store[key];
+    function load(c, style) {
+        for (const key in style) {
+            if (canvasProperty[key] == 1)
+                c[key] = style[key];
         }
+        if(typeof c.setShadow === 'function')
+            c.setShadow(c.shadowOffsetX, c.shadowOffsetY, c.shadowBlur, c.shadowColor);
     }
 
     /**
@@ -8150,7 +8181,7 @@ var Body = __webpack_require__(5);
 
     /**
      * Gets the requested texture (an Image) via its path
-     * @method _getTexture
+     * @method _getText
      * @private
      * @param {render} render
      * @param {string} imagePath
@@ -8660,6 +8691,10 @@ var Body = __webpack_require__(5);
         var engine = Common.extend(defaults, options);
 
         engine.world = options.world || Composite.create({ label: 'World' });
+        engine.world.bounds = {
+            min: { x: 0, y: 0 },
+            max: { x: options.width, y: options.height }
+        };
         engine.pairs = options.pairs || Pairs.create();
         engine.detector = options.detector || Detector.create();
 
@@ -9171,6 +9206,7 @@ var Bounds = __webpack_require__(1);
     Resolver._positionDampen = 0.9;
     Resolver._positionWarming = 0.8;
     Resolver._frictionNormalMultiplier = 5;
+    Resolver._positionImpulseMax = 25.0;
 
     /**
      * Prepare pairs for position solving.
@@ -9260,6 +9296,22 @@ var Bounds = __webpack_require__(1);
             }
         }
     };
+
+    /**
+     * Update positionImpulse max Limiter.
+     * @method positionImpulseLimiter
+     * @param {*} body
+     */
+    function positionImpulseLimiter(body) {
+        if (body.positionImpulse.x > Resolver._positionImpulseMax) {
+            console.log("positionImpulseLimiter X:", body.positionImpulse.x);
+            body.positionImpulse.x = Resolver._positionImpulseMax;
+        }
+        if (body.positionImpulse.y > Resolver._positionImpulseMax) {
+            console.log("positionImpulseLimiter Y:", body.positionImpulse.y);
+            body.positionImpulse.y = Resolver._positionImpulseMax;
+        }
+    }
 
     /**
      * Apply position resolution.
@@ -9856,7 +9908,7 @@ var Bodies = __webpack_require__(8);
                 }
             },
         };
-        if (defaults.wireframes == true) {
+        if (!defaults.wireframes) {
             defaults.render.strokeStyle = "#4caf50";
             defaults.render.text.color = "#000000";
         } else {
@@ -9870,12 +9922,10 @@ var Bodies = __webpack_require__(8);
             options.events.push(...btnEvent);
         }
         var edge = Bodies.rectangle(x, y, width, height, options);
-        edge.belong = button;
         button.part['edge'] = edge;
         Composite.addBody(button, edge);
         options.events = events;
         var text = Bodies.text(x, y, content, options);
-        text.belong = button;
         button.part['text'] = text;
         Composite.addBody(button, text);
         return button;
@@ -9948,15 +9998,12 @@ var Bodies = __webpack_require__(8);
         var lineEnd = lineStart + (lineWidth * progress.percent / 100);
         options = Common.extend(defaults, options);
         var progressbody = Bodies.rectangle(start, y, width, height, options);
-        progressbody.belong = progress;
         progress.part['progressbody'] = progressbody;
         Composite.addBody(progress, progressbody);
         var progressline = Bodies.line(lineStart, y, lineEnd, y, options);
-        progressline.belong = progress;
         progress.part['progressline'] = progressline;
         Composite.addBody(progress, progressline);
         var text = Bodies.text(textPoint, y, progress.percent + "%", options);
-        text.belong = progress;
         progress.part['progresstext'] = text;
         Composite.addBody(progress, text);
         return progress;

@@ -35,6 +35,31 @@ var Body = require('../body/Body');
     Render._goodFps = 30;
     Render._goodDelta = 1000 / 60;
 
+    var canvasProperty = {
+        filter        : 1,
+        font          : 1,
+        family        : 1,
+        lineCap       : 1,
+        lineJoin      : 1,
+        lineWidth     : 1,
+        direction     : 1,
+        textAlign     : 1,
+        miterLimit    : 1,
+        shadowBlur    : 1,
+        shadowColor   : 1,
+        globalAlpha   : 1,
+        fillStyle     : 1,
+        strokeStyle   : 1,
+        textBaseline  : 1,
+        shadowOffsetX : 1,
+        shadowOffsetY : 1,
+        lineDash      : 1,
+        lineDashOffset: 1,
+        imageSmoothingEnabled: 1,
+        imageSmoothingQuality: 1,
+        globalCompositeOperation: 1,
+    };
+
     /**
      * Creates a new renderer. The options parameter is an object that specifies any properties you wish to override the defaults.
      * All properties have default values, and many are pre-calculated automatically based on other properties.
@@ -779,7 +804,7 @@ var Body = require('../body/Body');
      */
     Render.elementEventHandler = function (render, elements) {
         var canvas = render.canvas;
-
+        canvas.events = null;
         Events.on(canvas, 'mousedown', (mouse) => {
             for (var i = 0; i < elements.length; i++) {
                 var element = elements[i];
@@ -857,11 +882,14 @@ var Body = require('../body/Body');
                     continue;
 
                 // save
-                var saveContext = save(c);
+                c.save();
                 if (options.showSleeping && body.isSleeping) {
                     c.globalAlpha = 0.5 * part.render.opacity;
                 } else if (part.render.opacity !== 1) {
                     c.globalAlpha = part.render.opacity;
+                } else if (render.engine && render.engine.world &&
+                    typeof render.engine.world.opacity == 'number' && render.engine.world.opacity !== 1) { // for popup event
+                    c.globalAlpha = render.engine.world.opacity;
                 }
 
                 if (part.render.sprite && part.render.sprite.texture && !options.wireframes) {
@@ -873,22 +901,39 @@ var Body = require('../body/Body');
                     c.rotate(part.angle);
 
                     // sprite.width over-write xScale
-                    if (texture.screenWidth != sprite.width &&
-                        typeof sprite.width !== 'undefined' &&
+                    if (typeof sprite.width !== 'undefined' &&
                         typeof texture.width !== 'undefined' &&
                         sprite.width !== 0 &&
                         texture.width !== 0) {
                         texture.screenWidth = sprite.width;
-                        sprite.xScale = texture.screenWidth / texture.width;
+                        sprite.xScale = sprite.width / texture.width;
                     }
                     // sprite.height over-write yScale
-                    if (texture.screenHeight != sprite.height &&
-                        typeof sprite.height !== 'undefined' &&
+                    if (typeof sprite.height !== 'undefined' &&
                         typeof texture.height !== 'undefined' &&
                         sprite.height !== 0 &&
                         texture.height !== 0) {
                         texture.screenHeight = sprite.height;
                         sprite.yScale = sprite.height / texture.height;
+                    }
+
+                    // image aspect mode
+                    switch(sprite.mode) {
+                    case 'aspectFit':
+                        sprite.yScale = sprite.xScale = Math.max(sprite.yScale, sprite.xScale);
+                        break;
+                    case 'aspectFill':
+                        sprite.yScale = sprite.xScale = Math.min(sprite.yScale, sprite.xScale);
+                        break;
+                    case 'widthFix':
+                        sprite.xScale = 1;
+                        break;
+                    case 'heightFix':
+                        sprite.yScale = 1;
+                        break;
+                    case 'scaleToFill':
+                    default:
+                        break;
                     }
 
                     c.drawImage(
@@ -909,7 +954,6 @@ var Body = require('../body/Body');
                         c.arc(part.position.x, part.position.y, part.circleRadius, 0, 2 * Math.PI);
                     } else if (part.btype == 'Text') {
                         c.beginPath();
-                        c.save();
                         var text = _getText(render, part);
                         c.font         = text.height + 'px ' + text.family;
                         c.family       = text.family;
@@ -918,7 +962,6 @@ var Body = require('../body/Body');
                         c.textAlign    = text.textAlign;
                         c.textBaseline = text.textBaseline;
                         c.fillText(text.content, part.position.x, part.position.y, text.width - 2 * text.padding);
-                        c.restore();
                     } else if (part.btype == 'Line') {
                         Common.extend(c, part.render);
                         c.beginPath();
@@ -1013,7 +1056,7 @@ var Body = require('../body/Body');
                         c.closePath();
                     }
 
-                    if (!options.wireframes && !part.wireframes) {
+                    if (!options.wireframes) {
                         c.fillStyle = part.render.fillStyle;
 
                         if (part.render.lineWidth) {
@@ -1028,18 +1071,13 @@ var Body = require('../body/Body');
                         c.strokeStyle = part.render.strokeStyle || '#bbb';
                         c.stroke();
                     }
-                    // restore
-                    // c.shadowBlur = shadowBlur;
-                    // c.shadowColor = shadowColor;
-                    // c.shadowOffsetX = shadowOffsetX;
-                    // c.shadowColor = shadowOffsetY;
                 }
-                restore(c, saveContext);
+                c.restore();
                 c.globalAlpha = 1;
             }
 
             if (body.wireframes) {
-                Render.oneBodyWireframes(render, body, context);
+                Render.oneBodyWireframes(render, body, context, body.wireframes);
             }
         }
 
@@ -1098,7 +1136,7 @@ var Body = require('../body/Body');
         c.stroke();
     };
 
-    Render.oneBodyWireframes = function(render, body, context) {
+    Render.oneBodyWireframes = function(render, body, context, wireframes) {
         if (!body.render.visible)
             return;
         var c = context,
@@ -1128,8 +1166,8 @@ var Body = require('../body/Body');
 
             c.lineTo(part.vertices[0].x, part.vertices[0].y);
         }
-        c.lineWidth = 1;
-        c.strokeStyle = '#bbb';
+        c.lineWidth = wireframes.lineWidth || 1;
+        c.strokeStyle =  wireframes.strokeStyle || '#bbb';
         c.stroke();
     };
 
@@ -1311,39 +1349,13 @@ var Body = require('../body/Body');
         c.globalCompositeOperation = 'source-over';
     };
 
-    // save canvas context
-    function save(c) {
-        return {
-            filter        : c.filter,
-            font          : c.font,
-            family        : c.family,
-            lineCap       : c.lineCap,
-            lineJoin      : c.lineJoin,
-            lineWidth     : c.lineWidth,
-            direction     : c.direction,
-            textAlign     : c.textAlign,
-            miterLimit    : c.miterLimit,
-            shadowBlur    : c.shadowBlur,
-            shadowColor   : c.shadowColor,
-            globalAlpha   : c.globalAlpha,
-            fillStyle     : c.fillStyle,
-            strokeStyle   : c.strokeStyle,
-            textBaseline  : c.textBaseline,
-            shadowOffsetX : c.shadowOffsetX,
-            shadowOffsetY : c.shadowOffsetY,
-            lineDash      : c.lineDash,
-            lineDashOffset: c.lineDashOffset,
-            imageSmoothingEnabled: c.imageSmoothingEnabled,
-            imageSmoothingQuality: c.imageSmoothingQuality,
-            globalCompositeOperation: c.globalCompositeOperation,
-        };
-    }
-
-    // restore canvas context
-    function restore(c, store) {
-        for (const key in store) {
-            c[key] = store[key];
+    function load(c, style) {
+        for (const key in style) {
+            if (canvasProperty[key] == 1)
+                c[key] = style[key];
         }
+        if(typeof c.setShadow === 'function')
+            c.setShadow(c.shadowOffsetX, c.shadowOffsetY, c.shadowBlur, c.shadowColor);
     }
 
     /**
@@ -1789,7 +1801,7 @@ var Body = require('../body/Body');
 
     /**
      * Gets the requested texture (an Image) via its path
-     * @method _getTexture
+     * @method _getText
      * @private
      * @param {render} render
      * @param {string} imagePath

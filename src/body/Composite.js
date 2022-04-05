@@ -248,6 +248,7 @@ var Body = require('./Body');
     Composite.addBody = function(composite, body) {
         Composite.registerEvent(body);
         composite.bodies.push(body);
+        body.belong = composite;
         Composite.setModified(composite, true, true, false);
         return composite;
     };
@@ -272,7 +273,8 @@ var Body = require('./Body');
                 Composite.removeBody(composite.composites[i], body, true);
             }
         }
-
+        // clear events
+        body.events = [];
         return composite;
     };
 
@@ -507,7 +509,7 @@ var Body = require('./Body');
         var objs = objects.filter((object) => {
             return filter(object);
         });
-        return objs.length <= 1 ? [objs] : objs;
+        return objs || [];
     };
 
     /**
@@ -660,12 +662,12 @@ var Body = require('./Body');
             return;
 
         var bodies = Composite.getByFilter(composite, 'body', (object) => {
-            if (id && typeof callback === 'number')
+            if (id && typeof id === 'number')
                 return object.id === id;
             return true;
         });
         for (var i = 0; i < bodies.length; i++) {
-            callback(i, bodies[i]);
+            callback(bodies[i]);
         }
     };
 
@@ -678,7 +680,7 @@ var Body = require('./Body');
     Composite.updateRender = function(composite, id, options, willRecover = true) {
         if (!composite || !options || Object.keys(options).length == 0)
             return composite;
-        Composite.each(composite, (i, body) => {
+        Composite.each(composite, (body) => {
             Body.updateRender(body, options, willRecover);
         }, id, true);
     };
@@ -691,7 +693,7 @@ var Body = require('./Body');
     Composite.recoverRender = function(composite, id) {
         if (!composite)
             return composite;
-        Composite.each(composite, (i, body) => {
+        Composite.each(composite, (body) => {
             Body.recoverRender(body);
         }, id, true);
     };

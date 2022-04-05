@@ -64,7 +64,7 @@ var Bodies = require('./Bodies');
                 }
             },
         };
-        if (defaults.wireframes == true) {
+        if (!defaults.wireframes) {
             defaults.render.strokeStyle = "#4caf50";
             defaults.render.text.color = "#000000";
         } else {
@@ -78,12 +78,10 @@ var Bodies = require('./Bodies');
             options.events.push(...btnEvent);
         }
         var edge = Bodies.rectangle(x, y, width, height, options);
-        edge.belong = button;
         button.part['edge'] = edge;
         Composite.addBody(button, edge);
         options.events = events;
         var text = Bodies.text(x, y, content, options);
-        text.belong = button;
         button.part['text'] = text;
         Composite.addBody(button, text);
         return button;
@@ -156,15 +154,12 @@ var Bodies = require('./Bodies');
         var lineEnd = lineStart + (lineWidth * progress.percent / 100);
         options = Common.extend(defaults, options);
         var progressbody = Bodies.rectangle(start, y, width, height, options);
-        progressbody.belong = progress;
         progress.part['progressbody'] = progressbody;
         Composite.addBody(progress, progressbody);
         var progressline = Bodies.line(lineStart, y, lineEnd, y, options);
-        progressline.belong = progress;
         progress.part['progressline'] = progressline;
         Composite.addBody(progress, progressline);
         var text = Bodies.text(textPoint, y, progress.percent + "%", options);
-        text.belong = progress;
         progress.part['progresstext'] = text;
         Composite.addBody(progress, text);
         return progress;

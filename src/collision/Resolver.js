@@ -18,6 +18,7 @@ var Bounds = require('../geometry/Bounds');
     Resolver._positionDampen = 0.9;
     Resolver._positionWarming = 0.8;
     Resolver._frictionNormalMultiplier = 5;
+    Resolver._positionImpulseMax = 25.0;
 
     /**
      * Prepare pairs for position solving.
@@ -107,6 +108,22 @@ var Bounds = require('../geometry/Bounds');
             }
         }
     };
+
+    /**
+     * Update positionImpulse max Limiter.
+     * @method positionImpulseLimiter
+     * @param {*} body
+     */
+    function positionImpulseLimiter(body) {
+        if (body.positionImpulse.x > Resolver._positionImpulseMax) {
+            console.log("positionImpulseLimiter X:", body.positionImpulse.x);
+            body.positionImpulse.x = Resolver._positionImpulseMax;
+        }
+        if (body.positionImpulse.y > Resolver._positionImpulseMax) {
+            console.log("positionImpulseLimiter Y:", body.positionImpulse.y);
+            body.positionImpulse.y = Resolver._positionImpulseMax;
+        }
+    }
 
     /**
      * Apply position resolution.
